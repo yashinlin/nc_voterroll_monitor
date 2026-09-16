@@ -1,0 +1,19 @@
+.vscode
+
+# virtual env
+/.venv
+venv
+
+# data
+/data
+/output
+
+# exploratory
+Peek_into_data.ipynb
+
+# Jupyter
+.ipynb checkpoints/
+
+# Temp files
+__pycache__
+*.log
