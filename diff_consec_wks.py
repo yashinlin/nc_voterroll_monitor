@@ -42,22 +42,23 @@ def load_voter_file(path: Path, usecols: list[str] = USECOLS) -> pd.DataFrame:
     )
     return pd.concat(chunks, ignore_index=True)
 
-
 def diff_voter_rolls(df_current: pd.DataFrame, df_prior: pd.DataFrame, output_path: Path, key_col: str = KEY_COL) -> pd.DataFrame:
-    """Removed = in df_current but not in df_prior. Writes the removed rows to
-    output_path and prints a summary. Returns the removed rows."""
-    prior_ids = set(df_prior[key_col])
-    removed = df_current[~df_current[key_col].isin(prior_ids)].copy()
+    """Removed = status_cd is 'R' in df_current but was not 'R' in df_prior."""
 
+    prior_status = df_prior[[key_col, "status_cd"]].rename(columns={"status_cd": "status_cd_prior"})
+    merged = df_current.merge(prior_status, on=key_col, how="left")
+    removed = merged[(merged["status_cd"] == "R") & (merged["status_cd_prior"] != "R")].copy()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     removed.to_csv(output_path, index=False)
 
     reason_counts = removed["reason_cd"].fillna("(blank)").replace("", "(blank)").value_counts()
     status_counts = removed["status_cd"].value_counts()
-    inconsistent = removed[removed["status_cd"] != "R"]
-
-    pct = len(removed) / len(df_current) if len(df_current) else 0.0
+    no_prior_record = removed[removed["status_cd_prior"].isna()]
     print("=" * 60)
+
+    if len(no_prior_record):
+        print(f"\nNOTE: {len(no_prior_record)} removed voters have no prior-snapshot record at all")
+    pct = len(removed) / len(df_current) if len(df_current) else 0.0
     print(f"Current snapshot rows: {len(df_current)}")
     print(f"Prior snapshot rows:   {len(df_prior)}")
     print(f"Removed voters:        {len(removed)} ({pct:.2%} of current)")
@@ -65,9 +66,6 @@ def diff_voter_rolls(df_current: pd.DataFrame, df_prior: pd.DataFrame, output_pa
     print(reason_counts.to_string())
     print("\nBreakdown by status_cd:")
     print(status_counts.to_string())
-    if len(inconsistent):
-        print(f"\nWARNING: {len(inconsistent)} removed voters have status_cd != 'R'")
-        print(inconsistent["status_cd"].value_counts().to_string())
     print(f"\nSaved: {output_path}")
     print("=" * 60)
 
@@ -76,9 +74,11 @@ def diff_voter_rolls(df_current: pd.DataFrame, df_prior: pd.DataFrame, output_pa
 
 def run_weekly_diff():
     print(f"Loading prior snapshot from {PRIOR_VOTER_FILE}")
-    # diff_voter_rolls only ever reads df_prior[KEY_COL] and len(df_prior), so
-    # skip loading its other columns to save memory.
-    df_prior = load_voter_file(PRIOR_VOTER_FILE, usecols=[KEY_COL])
+    # diff_voter_rolls reads df_prior[KEY_COL] (for the join) and status_cd (to
+    # check whether a voter was already Removed before this period), plus
+    # len(df_prior) for the summary — so those two columns is all we load.    
+    
+    df_prior = load_voter_file(PRIOR_VOTER_FILE, usecols=[KEY_COL, "status_cd"])
     print(f"Loading current snapshot from {CURRENT_VOTER_FILE}")
     df_current = load_voter_file(CURRENT_VOTER_FILE)
     print(f"\ndf_prior: {len(df_prior)} rows, df_current: {len(df_current)} rows")
