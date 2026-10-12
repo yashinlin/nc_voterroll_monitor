@@ -63,7 +63,7 @@ def diff_voter_rolls(df_current: pd.DataFrame, df_prior: pd.DataFrame, output_pa
     print(f"Removed voters:        {len(removed)} ({pct:.2%} of current)")
     print("\nBreakdown by reason_cd:")
     print(reason_counts.to_string())
-    print("\nBreakdowdn by status_cd:")
+    print("\nBreakdown by status_cd:")
     print(status_counts.to_string())
     print(f"\nSaved: {output_path}")
     print("=" * 60)
