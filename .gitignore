@@ -10,9 +10,10 @@ venv
 
 # exploratory
 Peek_into_data.ipynb
+scratch_*.py
 
 # Jupyter
-.ipynb checkpoints/
+.ipynb_checkpoints/
 
 # Temp files
 __pycache__
