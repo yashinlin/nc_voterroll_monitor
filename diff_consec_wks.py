@@ -8,7 +8,8 @@ PRIOR_VOTER_FILE = DATA_DIR / "ncvoter_Statewide 2026.08.31" / "ncvoter_Statewid
 CURRENT_VOTER_FILE = DATA_DIR / "ncvoter_Statewide 2026.09.07" / "ncvoter_Statewide.txt"
 
 KEY_COL = "ncid"  # statewide-unique voter id; voter_reg_num is only unique per-county
-# Curated subset of the 70 source columns: this box has ~3.8GB RAM, far short of what a full 7.8M-row x 70-col DataFrame needs, so only analysis-relevant + human-review columns are kept. Extend if later analysis needs more.
+
+# Curated subset of the 70 source columns
 USECOLS = [
     "county_desc",
     KEY_COL,
@@ -22,15 +23,13 @@ USECOLS = [
     "voter_status_reason_desc",
     "registr_dt",
 ]
-# Low-cardinality columns loaded as category dtype instead of str: with ~9.2M
-# rows per snapshot on a 3.8GB-RAM box, this is the difference between fitting
-# in memory and not.
+
+# Define arguments for read_csv data loading parameters
 CATEGORY_COLS = ["county_desc", "party_cd", "status_cd", "voter_status_desc", "reason_cd", "voter_status_reason_desc"]
 SEP = "\t"
 QUOTECHAR = '"'
 ENCODING = "latin-1"  # source file is not valid UTF-8 (e.g. 0xbd at byte ~2946)
 CHUNKSIZE = 200_000
-
 
 def load_voter_file(path: Path, usecols: list[str] = USECOLS) -> pd.DataFrame:
     """Streams the file in chunks (full statewide file is too large to fit in
@@ -46,11 +45,11 @@ def diff_voter_rolls(df_current: pd.DataFrame, df_prior: pd.DataFrame, output_pa
     """Removed = status_cd is 'R' in df_current but was not 'R' in df_prior."""
 
     prior_status = df_prior[[key_col, "status_cd"]].rename(columns={"status_cd": "status_cd_prior"})
-    merged = df_current.merge(prior_status, on=key_col, how="left")
+    merged = df_current.merge(prior_status, on=key_col, how="left") # tack on prior_status to df_current
     removed = merged[(merged["status_cd"] == "R") & (merged["status_cd_prior"] != "R")].copy()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True) 
+    # above creates parent directory if that does not already exist (eg. in the case of new volunteers)
     removed.to_csv(output_path, index=False)
-
     reason_counts = removed["reason_cd"].fillna("(blank)").replace("", "(blank)").value_counts()
     status_counts = removed["status_cd"].value_counts()
     no_prior_record = removed[removed["status_cd_prior"].isna()]
@@ -64,7 +63,7 @@ def diff_voter_rolls(df_current: pd.DataFrame, df_prior: pd.DataFrame, output_pa
     print(f"Removed voters:        {len(removed)} ({pct:.2%} of current)")
     print("\nBreakdown by reason_cd:")
     print(reason_counts.to_string())
-    print("\nBreakdown by status_cd:")
+    print("\nBreakdowdn by status_cd:")
     print(status_counts.to_string())
     print(f"\nSaved: {output_path}")
     print("=" * 60)
