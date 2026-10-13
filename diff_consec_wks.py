@@ -70,14 +70,35 @@ def diff_voter_rolls(df_current: pd.DataFrame, df_prior: pd.DataFrame, output_pa
 
     return removed
 
+def county_removal_summary(removed: pd.DataFrame, df_prior: pd.DataFrame, min_registered: int = 5000) -> pd.DataFrame:
+    """Removals per county, with rate = removed / prior registered (status != 'R')."""
+    registered = df_prior.loc[df_prior["status_cd"] != "R"].groupby("county_desc", observed=True).size()
+    registered.index = registered.index.astype(str)
+    removed_n = removed.groupby(removed["county_desc"].astype(str)).size()
+
+    out = pd.DataFrame({"prior_registered": registered, "removed": removed_n})
+    out["removed"] = out["removed"].fillna(0).astype(int)
+    out["removal_rate_pct"] = (out["removed"] / out["prior_registered"] * 100).round(3)
+    statewide_rate = out["removed"].sum() / out["prior_registered"].sum()
+    out["expected"] = (out["prior_registered"] * statewide_rate).round(1)
+    out["excess"] = (out["removed"] - out["expected"]).round(1)
+    out["small_county"] = out["prior_registered"] < min_registered
+    out.index.name = "county_desc"
+    return out.sort_values("excess", ascending=False).reset_index()
+
+def county_reason_table(removed: pd.DataFrame, counties: list[str]) -> pd.DataFrame:
+    """reason_cd counts for the given counties (rows = county, columns = reason code)."""
+    r = removed.assign(county_desc=removed["county_desc"].astype(str),
+                       reason_cd=removed["reason_cd"].astype(str))
+    return pd.crosstab(r["county_desc"], r["reason_cd"]).reindex(counties, fill_value=0)
 
 def run_weekly_diff():
     print(f"Loading prior snapshot from {PRIOR_VOTER_FILE}")
     # diff_voter_rolls reads df_prior[KEY_COL] (for the join) and status_cd (to
-    # check whether a voter was already Removed before this period), plus
-    # len(df_prior) for the summary — so those two columns is all we load.    
+    # check whether a voter was already Removed before this period); the county
+    # summary also needs county_desc (denominator by county). So we load those three.
     
-    df_prior = load_voter_file(PRIOR_VOTER_FILE, usecols=[KEY_COL, "status_cd"])
+    df_prior = load_voter_file(PRIOR_VOTER_FILE, usecols=[KEY_COL, "status_cd", "county_desc"])
     print(f"Loading current snapshot from {CURRENT_VOTER_FILE}")
     df_current = load_voter_file(CURRENT_VOTER_FILE)
     print(f"\ndf_prior: {len(df_prior)} rows, df_current: {len(df_current)} rows")
@@ -88,8 +109,13 @@ def run_weekly_diff():
             print(f"WARNING: {dupes} duplicate {KEY_COL} values in {name}")
 
     output_path = OUTPUT_DIR / "removed_voters_2026.08.31_to_2026.09.07.csv"
-    diff_voter_rolls(df_current, df_prior, output_path)
-
+    removed = diff_voter_rolls(df_current, df_prior, output_path)
+    summary = county_removal_summary(removed, df_prior)
+    summary.to_csv(OUTPUT_DIR / "county_removal_summary_2026.08.31_to_2026.09.07.csv", index=False)
+    print(summary.head(15).to_string(index=False))
+    print("CHECK removed total:", summary["removed"].sum(), "vs", len(removed))
+    print("CHECK registered total:", summary["prior_registered"].sum(), "vs", int((df_prior["status_cd"] != "R").sum()))
+    print("CHECK counties:", len(summary), "(expect 100)")
 
 if __name__ == "__main__":
     run_weekly_diff()
